@@ -2,22 +2,71 @@
 
 ## Overview
 
-HTTP-JSON-Assistant is a bare-metal embedded system built on an STM32 microcontroller that receives commands over HTTP, parses JSON payloads, and executes deterministic hardware actions.
+HTTP-JSON-Assistant is a bare-metal embedded HTTP server on STM32G071RB that receives JSON commands over Ethernet and executes hardware actions deterministically.
 
-The project exists to explore an alternative to modern reminder and alarm systems that are tightly coupled to smartphones and cloud services. Such systems depend on continuous connectivity, background execution privileges, battery availability, and operating system notification policies. As a result, routine or time-critical reminders often fail for reasons unrelated to the actual schedule.
+## Phase-1 MVP Focus
 
-This project takes a different approach. A dedicated embedded system assumes responsibility for real-time execution, while external devices are used only to provide configuration data and schedules. Once configured, the embedded system operates independently and reliably.
+Validating the communication and execution pipeline:
+- RCC: System clock configuration (64 MHz)
+- GPIO: LED control and SPI pin configuration
+- SPI: Interrupt-driven communication with ENC28J60
+- Delay: SysTick-based timing
+- Network: lwIP stack (NO_SYS mode)
+- Protocol: HTTP request parsing
+- Command: JSON parser and executor
 
-The project is developed as a single evolving system. Its long-term goal is to function as a standalone alarm and reminder assistant driven by time-based events. Development is intentionally phased so that the communication and execution foundation is validated before higher-level assistant behavior is added.
+See [MVP.md](MVP.md) for detailed phase breakdown.
 
----
-## Current Focus (Phase-1)
+## Build Instructions
 
-Phase-1 is limited to validating the communication and execution pipeline.
+### Prerequisites
+- ARM GCC toolchain (`arm-none-eabi-gcc`)
+- OpenOCD for flashing
+- ST-Link debugger
+- STM32G071RB development board
 
-* STM32 acts as a network-accessible endpoint
-* Commands are received over HTTP
-* JSON payloads are parsed deterministically
-* A simple hardware action (LED blink) is executed
+### Build
+```bash
+make clean
+make  all
+```
 
-The LED is used only to verify the end-to-end path and is not a feature.
+### Flash to Target
+```bash
+make flash
+```
+
+### View Disassembly
+```bash
+make disasm
+```
+
+## Project Structure
+
+```
+HTTP-JSON-Assistant/
+├── src/                 # Source code
+│   ├── drivers/         # Hardware drivers (RCC, GPIO, SPI, etc.)
+│   ├── net/             # lwIP network stack
+│   ├── protocol/        # HTTP parser
+│   └── app/             # JSON parser, command executor
+├── tests/               # TDD test infrastructure
+│   ├── unit/            # Driver unit tests
+│   ├── integration/     # Hardware integration tests
+│   └── system/          # End-to-end tests
+├── linker/              # Linker script
+└── docs/                # Private documentation (not in git)
+```
+
+## Development Philosophy
+
+- **Bare-metal**: No HAL, direct register access
+- **TDD**: Test every 10-20 lines before proceeding
+- **State machines**: Interrupt-driven with explicit state tracking
+- **Application-specific**: Drivers for actual hardware, not generic library
+
+## License
+
+Private project for learning and interviews.
+
+/***end of file ***/
