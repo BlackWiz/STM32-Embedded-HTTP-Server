@@ -1,6 +1,6 @@
 # HTTP-Ethernet Assistant
 
-[![Project Website](https://img.shields.io/badge/View_Project_Website-black?style=for-the-badge&logo=github&logoColor=white)](https://blackwiz.github.io/HTTP-JSON-Assistant/)
+[![Project Website](https://img.shields.io/badge/View_Project_Website-black?style=for-the-badge&logo=github&logoColor=white)](https://blackwiz.github.io/HTTP-Ethernet-Assistant/)
 
 **Network-controlled hardware assistant that parses JSON commands to execute real-time tasks.**
 
