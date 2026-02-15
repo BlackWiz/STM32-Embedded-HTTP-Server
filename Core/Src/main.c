@@ -20,6 +20,10 @@
 #include "tcp_echo.h"
 #include "http_server.h"
 
+/* USER CODE BEGIN PV */
+#define STACK_CANARY 0xDEADBEEF
+/* USER CODE END PV */
+
 /* Global Variables */
 struct netif gnetif;
 
@@ -33,9 +37,13 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void Paint_Stack(void);
 
 int main(void)
 {
+  /* USER CODE BEGIN 1 */
+  Paint_Stack();
+  /* USER CODE END 1 */
   HAL_Init();
   SystemClock_Config();
   MX_GPIO_Init();
@@ -119,6 +127,13 @@ int main(void)
 
   /* Infinite loop */
   uint32_t last_arp_time = 0;
+
+#if(0)
+
+  /* Simulating a Forced fault */
+  volatile uint32_t *invalid_ptr = (uint32_t *)0xFFFFFFF0;
+  *invalid_ptr = 0xDEADBEEF;
+#endif
 
   while (1)
   {
@@ -207,3 +222,92 @@ uint32_t sys_now(void)
 {
   return HAL_GetTick();
 }
+
+/* USER CODE BEGIN 0 */
+
+// --- 1. THE PANIC PRINTER (Direct Register Access) ---
+// Forces characters out of USART2 even if interrupts are dead
+void UART_Panic_Print(char *str) {
+    USART_TypeDef *uart = USART2; // Change this if you use USART1/3
+
+    while (*str) {
+    	// Wait for TXE_TXFNF (TX Data Register Empty / TX FIFO Not Full)
+		// This flag is set when the TDR register is ready for new data.
+        while (!(uart->ISR & USART_ISR_TXE_TXFNF));
+
+        // Write byte to Transmit Data Register
+        uart->TDR = *str++;
+    }
+    // Wait for TC (Transmission Complete)
+    while (!(uart->ISR & USART_ISR_TC));
+}
+
+void UART_Panic_Print_Hex(uint32_t val) {
+    char hex[] = "0123456789ABCDEF";
+    char buf[11]; // "0x12345678\0"
+
+    buf[0] = '0'; buf[1] = 'x';
+    for (int i = 0; i < 8; i++) {
+        buf[9 - i] = hex[(val >> (i * 4)) & 0xF];
+    }
+    buf[10] = '\0';
+    UART_Panic_Print(buf);
+}
+
+// --- 2. THE C HANDLER (Analyzes the Crash) ---
+void HardFault_Handler_C(uint32_t *stack_frame) {
+    // Stack Frame: [0]=R0, [1]=R1, [2]=R2, [3]=R3, [4]=R12, [5]=LR, [6]=PC, [7]=xPSR
+    volatile uint32_t r0 = stack_frame[0];
+    volatile uint32_t lr = stack_frame[5];
+    volatile uint32_t pc = stack_frame[6];
+
+    UART_Panic_Print("\r\n\r\n!!! CRASH DETECTED (HardFault) !!!\r\n");
+    UART_Panic_Print("PC (Where it died): ");
+    UART_Panic_Print_Hex(pc);
+    UART_Panic_Print("\r\n");
+
+    UART_Panic_Print("LR (Who called it): ");
+    UART_Panic_Print_Hex(lr);
+    UART_Panic_Print("\r\n");
+
+    UART_Panic_Print("R0 (First Arg):     ");
+    UART_Panic_Print_Hex(r0);
+    UART_Panic_Print("\r\n");
+
+    UART_Panic_Print("System Halted. Check your .map file for the PC address.\r\n");
+
+    // Trigger a breakpoint so the debugger stops here automatically
+    __asm("bkpt 255");
+    while (1);
+}
+
+// --- 3. THE ASSEMBLY SHIM (Captures the Stack Pointer) ---
+// This overrides the default weak definition
+__attribute__((naked)) void HardFault_Handler(void) {
+    __asm volatile (
+        " movs r0, #4          \n"
+        " mov r1, lr           \n"
+        " tst r0, r1           \n" // Check which stack was used
+        " bne use_psp          \n"
+        " mrs r0, msp          \n" // Main Stack
+        " b call_c             \n"
+        "use_psp:              \n"
+        " mrs r0, psp          \n" // Process Stack
+        "call_c:               \n"
+        " ldr r2, =HardFault_Handler_C \n"
+        " bx r2                \n" // Jump to C function
+    );
+}
+
+// --- 4. THE STACK PAINTER (Flood Gauge) ---
+extern uint32_t _estack; // Defined in linker script (Top of RAM)
+extern uint32_t _end;    // Defined in linker script (Start of Free RAM)
+
+static void Paint_Stack(void) {
+    uint32_t *p = &_end;
+    // Paint until 64 bytes before the top to be safe
+    while (p < (&_estack - 16)) {
+        *p++ = STACK_CANARY;
+    }
+}
+/* USER CODE END 0 */
